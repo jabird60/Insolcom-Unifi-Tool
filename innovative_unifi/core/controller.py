@@ -216,25 +216,91 @@ class ControllerClient:
         return False
 
     def set_locate(self, site_key: str, mac: str, enabled: bool) -> bool:
-        for proxy in (True, False):
-            try:
-                r = self.sess.post(self._u(f"/api/s/{site_key}/cmd/devmgr", proxy_first=proxy),
-                                   json={"cmd": "set-locate", "mac": mac, "duration": 60 if enabled else 0},
-                                   timeout=15)
-                if r.ok:
-                    return True
-            except Exception:
-                pass
-        # Fallback legacy boolean
-        for proxy in (True, False):
-            try:
-                r = self.sess.post(self._u(f"/api/s/{site_key}/cmd/devmgr", proxy_first=proxy),
-                                   json={"cmd": "set-locate", "mac": mac, "enabled": bool(enabled)},
-                                   timeout=15)
-                if r.ok:
-                    return True
-            except Exception:
-                pass
+        # For turning OFF, we need to try multiple methods as some devices don't respond to the first command
+        if not enabled:
+            success_count = 0
+            
+            # Method 1: Standard UniFi API format with duration=0
+            for proxy in (False, True):
+                try:
+                    r = self.sess.post(self._u(f"/api/s/{site_key}/cmd/devmgr", proxy_first=proxy),
+                                       json={"cmd": "set-locate", "mac": mac, "duration": 0},
+                                       timeout=15)
+                    if r.ok:
+                        success_count += 1
+                except Exception:
+                    pass
+            
+            # Method 2: Try with enabled=False
+            for proxy in (False, True):
+                try:
+                    r = self.sess.post(self._u(f"/api/s/{site_key}/cmd/devmgr", proxy_first=proxy),
+                                       json={"cmd": "set-locate", "mac": mac, "enabled": False},
+                                       timeout=15)
+                    if r.ok:
+                        success_count += 1
+                except Exception:
+                    pass
+            
+            # Method 3: Try with combined parameters
+            for proxy in (False, True):
+                try:
+                    r = self.sess.post(self._u(f"/api/s/{site_key}/cmd/devmgr", proxy_first=proxy),
+                                       json={"cmd": "set-locate", "mac": mac, "enabled": False, "duration": 0},
+                                       timeout=15)
+                    if r.ok:
+                        success_count += 1
+                except Exception:
+                    pass
+            
+            # Method 4: Try with negative duration
+            for proxy in (False, True):
+                try:
+                    r = self.sess.post(self._u(f"/api/s/{site_key}/cmd/devmgr", proxy_first=proxy),
+                                       json={"cmd": "set-locate", "mac": mac, "duration": -1},
+                                       timeout=15)
+                    if r.ok:
+                        success_count += 1
+                except Exception:
+                    pass
+            
+            # Method 5: Try with locate command
+            for proxy in (False, True):
+                try:
+                    r = self.sess.post(self._u(f"/api/s/{site_key}/cmd/devmgr", proxy_first=proxy),
+                                       json={"cmd": "locate", "mac": mac, "duration": 0},
+                                       timeout=15)
+                    if r.ok:
+                        success_count += 1
+                except Exception:
+                    pass
+            
+            return success_count > 0
+        
+        # For turning ON, use the standard method
+        else:
+            # Method 1: Standard UniFi API format with duration (works with direct endpoint)
+            for proxy in (False, True):  # Try direct endpoint first since proxy returns 404
+                try:
+                    r = self.sess.post(self._u(f"/api/s/{site_key}/cmd/devmgr", proxy_first=proxy),
+                                       json={"cmd": "set-locate", "mac": mac, "duration": 60},
+                                       timeout=15)
+                    if r.ok:
+                        return True
+                except Exception:
+                    pass
+            
+            # Fallback methods for Locate ON if the first method fails
+            for proxy in (False, True):
+                try:
+                    r = self.sess.post(self._u(f"/api/s/{site_key}/cmd/devmgr", proxy_first=proxy),
+                                       json={"cmd": "set-locate", "mac": mac, "enabled": True},
+                                       timeout=15)
+                    if r.ok:
+                        return True
+                except Exception:
+                    pass
+        
         return False
 
     def upgrade_device(self, site_key: str, mac: str) -> bool:
