@@ -1,0 +1,23 @@
+# Windows-specific requirements
+# Install with: pip install -r requirements-windows.txt
+
+# Core GUI framework
+PyQt5>=5.15.11
+
+# HTTP requests
+requests>=2.31.0
+
+# SSH client
+paramiko>=3.4.0
+
+# System utilities
+psutil>=5.9.0
+
+# Windows-specific dependencies
+pywin32>=306; sys_platform == "win32"
+
+# Cryptography (for paramiko)
+cryptography>=41.0.0
+
+# Additional Windows utilities
+pywin32-ctypes>=0.2.0; sys_platform == "win32"
