@@ -113,9 +113,14 @@ class WizardPage(QtWidgets.QWidget):
         self.lbl_cidr = QtWidgets.QLabel("Local network: (detecting…)")
         self.btn_discover = QtWidgets.QPushButton("Discover on Local Network")
         self.btn_setinform = QtWidgets.QPushButton("Set‑Inform + Adopt Selected")
+        self.btn_test_inform = QtWidgets.QPushButton("Test Set-Inform")
         self.btn_loc_on = QtWidgets.QPushButton("Locate ON")
         self.btn_loc_off = QtWidgets.QPushButton("Locate OFF")
         self.btn_refresh_devices = QtWidgets.QPushButton("Refresh From Controller")
+        
+        # Active site indicator
+        self.lbl_active_site = QtWidgets.QLabel(f"Active Site: {self.site_key}")
+        self.lbl_active_site.setStyleSheet("font-weight: bold; color: #0066cc;")
 
         top2 = QtWidgets.QHBoxLayout()
         top2.addWidget(self.lbl_cidr)
@@ -123,17 +128,35 @@ class WizardPage(QtWidgets.QWidget):
         top2.addWidget(self.btn_discover)
         top2.addSpacing(20)
         top2.addWidget(self.btn_setinform)
+        top2.addWidget(self.btn_test_inform)
         top2.addSpacing(10)
         top2.addWidget(self.btn_loc_on)
         top2.addWidget(self.btn_loc_off)
         top2.addSpacing(10)
         top2.addWidget(self.btn_refresh_devices)
 
-        self.table = QtWidgets.QTableWidget(0, 5)
-        self.table.setHorizontalHeaderLabels(["IP", "Ping", "SSH 22", "Adopted", "MAC"])
+        # Add active site indicator
+        site_layout = QtWidgets.QHBoxLayout()
+        site_layout.addWidget(self.lbl_active_site)
+        site_layout.addStretch(1)
+
+        self.table = QtWidgets.QTableWidget(0, 7)
+        self.table.setHorizontalHeaderLabels(["IP", "Name", "Ping", "SSH 22", "Adopted", "Site", "MAC"])
         self.table.setSelectionBehavior(QtWidgets.QTableWidget.SelectRows)
         self.table.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
         self.table.horizontalHeader().setStretchLastSection(True)
+        
+        # Connect double-click event for SSH
+        self.table.itemDoubleClicked.connect(self._on_device_double_clicked)
+        
+        # Set column widths for better display
+        self.table.setColumnWidth(0, 120)  # IP
+        self.table.setColumnWidth(1, 150)  # Name
+        self.table.setColumnWidth(2, 60)   # Ping
+        self.table.setColumnWidth(3, 80)   # SSH
+        self.table.setColumnWidth(4, 80)   # Adopted
+        self.table.setColumnWidth(5, 150)  # Site
+        self.table.setColumnWidth(6, 140)  # MAC
 
         # Progress log
         self.lbl_progress = QtWidgets.QLabel("Ready to begin network setup...")
@@ -143,6 +166,7 @@ class WizardPage(QtWidgets.QWidget):
 
         lay_disc = QtWidgets.QVBoxLayout(self.grp_disc)
         lay_disc.addLayout(top2)
+        lay_disc.addLayout(site_layout)
         lay_disc.addWidget(self.lbl_progress)
         lay_disc.addWidget(self.table)
 
@@ -160,9 +184,13 @@ class WizardPage(QtWidgets.QWidget):
         self.btn_proceed.clicked.connect(self._proceed_site)
         self.btn_discover.clicked.connect(self._discover_local)
         self.btn_setinform.clicked.connect(self._setinform_and_adopt)
+        self.btn_test_inform.clicked.connect(self.test_set_inform)
         self.btn_loc_on.clicked.connect(lambda: self._locate(True))
         self.btn_loc_off.clicked.connect(lambda: self._locate(False))
         self.btn_refresh_devices.clicked.connect(self._refresh_from_controller)
+        
+        # Connect site selection change
+        self.cmb_sites.currentIndexChanged.connect(self._on_site_changed)
 
         self._load_sites()
         self._update_cidr_label()
@@ -274,8 +302,25 @@ class WizardPage(QtWidgets.QWidget):
         self.devices_view.set_site(self.site_key)
         self.wifi_view.set_site(self.site_key)
         
-        self._update_progress("Site configuration complete. Starting device discovery...", "success")
+        # Update active site label
+        if hasattr(self, 'lbl_active_site'):
+            self.lbl_active_site.setText(f"Active Site: {self.site_key}")
+        
+        self._update_progress(f"Site configuration complete. Active site: {self.site_key}. Starting device discovery...", "success")
         self._auto_discover_and_adopt()
+
+    def _on_site_changed(self):
+        """Handle site selection change"""
+        if not self.rb_existing.isChecked():
+            return  # Only update when existing site is selected
+        
+        key = self.cmb_sites.currentData()
+        if key:
+            self.site_key = key
+            # Update active site label
+            if hasattr(self, 'lbl_active_site'):
+                self.lbl_active_site.setText(f"Active Site: {self.site_key}")
+            self._update_progress(f"Active site changed to: {self.site_key}", "info")
 
     # --- Local network helpers ---
     def _update_cidr_label(self):
@@ -308,16 +353,20 @@ class WizardPage(QtWidgets.QWidget):
         for r in results:
             ip = r.get("ip","")
             mac = r.get("mac","")
+            name = r.get("name", "") or r.get("hostname", "") or r.get("alias", "")
             # add row
             row = self.table.rowCount()
             self.table.insertRow(row)
             self.table.setItem(row, 0, QtWidgets.QTableWidgetItem(ip))
-            self.table.setItem(row, 1, QtWidgets.QTableWidgetItem("yes"))
-            self.table.setItem(row, 2, QtWidgets.QTableWidgetItem("open/unknown"))
-            self.table.setItem(row, 3, QtWidgets.QTableWidgetItem(""))  # adopted (filled via controller refresh)
-            self.table.setItem(row, 4, QtWidgets.QTableWidgetItem(mac))
-        # Map to controller
+            self.table.setItem(row, 1, QtWidgets.QTableWidgetItem(name))
+            self.table.setItem(row, 2, QtWidgets.QTableWidgetItem("yes"))
+            self.table.setItem(row, 3, QtWidgets.QTableWidgetItem("open/unknown"))
+            self.table.setItem(row, 4, QtWidgets.QTableWidgetItem(""))  # adopted (filled via controller refresh)
+            self.table.setItem(row, 5, QtWidgets.QTableWidgetItem(""))  # site (filled via controller refresh)
+            self.table.setItem(row, 6, QtWidgets.QTableWidgetItem(mac))
+        # Map to controller and show adoption status
         self._refresh_from_controller()
+        self._update_progress(f"Discovery complete. Found {self.table.rowCount()} device(s). Checking adoption status...", "info")
 
     def _discover_cidr(self, cidr: str):
         try:
@@ -342,50 +391,303 @@ class WizardPage(QtWidgets.QWidget):
             if not alive:
                 continue
             ssh = tcp_check(ip, 22, 1.5)
-            row = {"ip": ip, "ping": alive, "ssh": ssh, "adopted": "", "mac": ""}
+            row = {"ip": ip, "ping": alive, "ssh": ssh, "adopted": "", "site": "", "mac": "", "name": ""}
             self.discovered.append(row)
             r = self.table.rowCount()
             self.table.insertRow(r)
             self.table.setItem(r, 0, QtWidgets.QTableWidgetItem(ip))
-            self.table.setItem(r, 1, QtWidgets.QTableWidgetItem("yes" if alive else "no"))
-            self.table.setItem(r, 2, QtWidgets.QTableWidgetItem("open" if ssh else "closed"))
-            self.table.setItem(r, 3, QtWidgets.QTableWidgetItem(""))
+            self.table.setItem(r, 1, QtWidgets.QTableWidgetItem(""))  # name (filled via controller refresh)
+            self.table.setItem(r, 2, QtWidgets.QTableWidgetItem("yes" if alive else "no"))
+            self.table.setItem(r, 3, QtWidgets.QTableWidgetItem("open" if ssh else "closed"))
             self.table.setItem(r, 4, QtWidgets.QTableWidgetItem(""))
+            self.table.setItem(r, 5, QtWidgets.QTableWidgetItem(""))
+            self.table.setItem(r, 6, QtWidgets.QTableWidgetItem(""))
         progress.setValue(len(hosts))
-        # Try to map any already-known devices by IP
+        # Try to map any already-known devices by IP and show adoption status
         self._refresh_from_controller()
+        self._update_progress(f"Network scan complete. Found {self.table.rowCount()} device(s). Checking adoption status...", "info")
 
     def _selected_ips(self):
         selrows = set(idx.row() for idx in self.table.selectedIndexes())
         ips = []
         for r in selrows:
-            it = self.table.item(r, 0)
+            it = self.table.item(r, 0)  # IP is still in column 0
             if it:
                 ips.append(it.text())
         return ips
 
     def _refresh_from_controller(self):
+        # Get all sites to map device sites
         try:
-            devices = self.ctrl.get_devices(self.site_key)
-        except Exception as e:
-            QtWidgets.QMessageBox.warning(self, "Controller", f"Failed to fetch devices:\n{e}")
-            return
-        by_ip = {}
-        for d in devices:
-            ip = d.get("ip") or ""
-            if ip:
-                by_ip[ip] = d
+            sites = self.ctrl.get_sites() or []
+            site_map = {}
+            for site in sites:
+                site_key = site.get("name") or site.get("site_name") or "default"
+                site_name = site.get("desc") or site.get("name") or site.get("site_name") or "default"
+                site_map[site_key] = site_name
+        except Exception:
+            site_map = {self.site_key: "Current Site"}
+        
+        # Check all sites for adopted devices
+        all_devices = {}
+        site_device_map = {}
+        
+        for site_key in site_map.keys():
+            try:
+                devices = self.ctrl.get_devices(site_key)
+                for d in devices:
+                    ip = d.get("ip") or ""
+                    if ip:
+                        all_devices[ip] = d
+                        site_device_map[ip] = site_key
+            except Exception:
+                continue
+        
+        by_ip = all_devices
+        
+        # Track adopted devices for site selection
+        adopted_devices = []
+        
         # update rows
         for r in range(self.table.rowCount()):
             ip = self.table.item(r, 0).text()
             d = by_ip.get(ip)
             adopted = ""
+            site_name = ""
             mac = ""
+            device_name = ""
+            
             if d:
                 mac = d.get("mac") or ""
-                adopted = "yes" if d.get("adopted") else "no"
-            self.table.item(r, 3).setText(adopted)
-            self.table.item(r, 4).setText(mac)
+                device_name = d.get("name") or d.get("alias") or d.get("hostname") or ""
+                is_adopted = d.get("adopted", False)
+                adopted = "✓ Yes" if is_adopted else "✗ No"
+                
+                if is_adopted:
+                    # Get the site name for this device
+                    device_site = site_device_map.get(ip, self.site_key)
+                    site_name = site_map.get(device_site, device_site)
+                    adopted_devices.append((ip, device_site, site_name))
+                
+                # Set visual styling for adoption status
+                adopted_item = self.table.item(r, 4)
+                if adopted_item:
+                    if is_adopted:
+                        adopted_item.setForeground(QtGui.QColor(0, 150, 0))  # Green
+                        adopted_item.setBackground(QtGui.QColor(240, 255, 240))  # Light green
+                    else:
+                        adopted_item.setForeground(QtGui.QColor(150, 0, 0))  # Red
+                        adopted_item.setBackground(QtGui.QColor(255, 240, 240))  # Light red
+                
+                # Set site styling
+                site_item = self.table.item(r, 5)
+                if site_item:
+                    if is_adopted:
+                        site_item.setForeground(QtGui.QColor(0, 100, 200))  # Blue
+                        site_item.setBackground(QtGui.QColor(240, 248, 255))  # Light blue
+                    else:
+                        site_item.setForeground(QtGui.QColor(100, 100, 100))  # Gray
+                        site_item.setBackground(QtGui.QColor(248, 248, 248))  # Light gray
+                
+                # Set device name styling
+                name_item = self.table.item(r, 1)
+                if name_item:
+                    if is_adopted:
+                        name_item.setForeground(QtGui.QColor(0, 100, 200))  # Blue
+                        name_item.setBackground(QtGui.QColor(240, 248, 255))  # Light blue
+                    else:
+                        name_item.setForeground(QtGui.QColor(50, 50, 50))  # Dark gray
+                        name_item.setBackground(QtGui.QColor(248, 248, 248))  # Light gray
+            
+            self.table.item(r, 1).setText(device_name)
+            self.table.item(r, 4).setText(adopted)
+            self.table.item(r, 5).setText(site_name)
+            self.table.item(r, 6).setText(mac)
+        
+        # Auto-select site if adopted devices are found
+        if adopted_devices:
+            self._auto_select_site_for_adopted_devices(adopted_devices)
+
+    def _auto_select_site_for_adopted_devices(self, adopted_devices):
+        """Automatically select the site for adopted devices"""
+        if not adopted_devices:
+            return
+        
+        # Count devices by site
+        site_counts = {}
+        for ip, site_key, site_name in adopted_devices:
+            site_counts[site_key] = site_counts.get(site_key, 0) + 1
+        
+        # Find the site with the most adopted devices
+        most_common_site = max(site_counts.items(), key=lambda x: x[1])
+        site_key, device_count = most_common_site
+        
+        # Update progress log
+        site_name = next((name for ip, sk, name in adopted_devices if sk == site_key), site_key)
+        self._update_progress(f"Found {device_count} adopted device(s) in site '{site_name}' - auto-selecting this site", "success")
+        
+        # Update the site selection
+        self.site_key = site_key
+        
+        # Update the site combo box if it exists
+        if hasattr(self, 'cmb_sites'):
+            for i in range(self.cmb_sites.count()):
+                if self.cmb_sites.itemData(i) == site_key:
+                    self.cmb_sites.setCurrentIndex(i)
+                    self._update_progress(f"Automatically selected site: {site_name}", "success")
+                    break
+        
+        # Update other views
+        if hasattr(self, 'devices_view'):
+            self.devices_view.set_site(site_key)
+        if hasattr(self, 'wifi_view'):
+            self.wifi_view.set_site(site_key)
+
+    def _on_device_double_clicked(self, item):
+        """Handle double-click on device in discovery table"""
+        if not item:
+            return
+        
+        row = item.row()
+        ip_item = self.table.item(row, 0)  # IP column
+        if not ip_item:
+            return
+        
+        ip = ip_item.text()
+        if not ip:
+            return
+        
+        # Get device info
+        name_item = self.table.item(row, 1)  # Name column
+        adopted_item = self.table.item(row, 4)  # Adopted column
+        site_item = self.table.item(row, 5)  # Site column
+        
+        device_name = name_item.text() if name_item else "Unknown"
+        is_adopted = adopted_item and "Yes" in adopted_item.text()
+        
+        # Use active site for single device operations
+        device_site = self.site_key  # Always use the currently active site
+        
+        self._launch_ssh_terminal(ip, device_name, is_adopted, device_site)
+
+    def _launch_ssh_terminal(self, ip: str, device_name: str, is_adopted: bool, site_key: str):
+        """Launch SSH terminal for device"""
+        try:
+            import subprocess
+            import sys
+            import os
+            import shutil
+            
+            # Determine SSH credentials
+            if is_adopted and site_key:
+                # Try to get site-specific credentials
+                site_creds = self.ctrl.get_site_ssh_credentials(site_key)
+                if site_creds:
+                    username = site_creds.get("username", self.ctrl.ssh_user)
+                    password = site_creds.get("password", self.ctrl.ssh_pass)
+                else:
+                    # Fallback to default credentials
+                    username = self.ctrl.ssh_user
+                    password = self.ctrl.ssh_pass
+            else:
+                # Use default credentials for unadopted devices
+                username = self.ctrl.ssh_user
+                password = self.ctrl.ssh_pass
+            
+            self._update_progress(f"Launching SSH to {device_name} ({ip}) with user: {username}...", "info")
+            
+            success = False
+            error_msg = ""
+            
+            # Try different SSH clients based on platform
+            if sys.platform.startswith("win"):
+                # Windows - try multiple SSH clients
+                ssh_commands = [
+                    # Try Windows 10+ built-in SSH
+                    ["ssh", f"{username}@{ip}"],
+                    # Try PuTTY
+                    ["putty", "-ssh", f"{username}@{ip}"],
+                    # Try cmd with SSH
+                    ["cmd", "/c", "start", "ssh", f"{username}@{ip}"],
+                    # Try PowerShell
+                    ["powershell", "-Command", f"ssh {username}@{ip}"]
+                ]
+                
+                for cmd in ssh_commands:
+                    try:
+                        self._update_progress(f"Trying: {' '.join(cmd)}", "info")
+                        result = subprocess.Popen(cmd, shell=True, creationflags=subprocess.CREATE_NEW_CONSOLE if "cmd" in cmd else 0)
+                        success = True
+                        break
+                    except Exception as e:
+                        error_msg = str(e)
+                        continue
+                        
+            else:
+                # Unix-like systems (macOS, Linux)
+                ssh_commands = []
+                
+                # Check if ssh command exists
+                if shutil.which("ssh"):
+                    ssh_commands.append(["ssh", f"{username}@{ip}"])
+                
+                # Platform-specific terminal commands
+                if sys.platform == "darwin":  # macOS
+                    ssh_commands.extend([
+                        ["osascript", "-e", f'tell app "Terminal" to do script "ssh {username}@{ip}"'],
+                        ["open", "-a", "Terminal", "--args", "ssh", f"{username}@{ip}"]
+                    ])
+                else:  # Linux
+                    ssh_commands.extend([
+                        ["xterm", "-e", f"ssh {username}@{ip}"],
+                        ["gnome-terminal", "--", "ssh", f"{username}@{ip}"],
+                        ["konsole", "-e", "ssh", f"{username}@{ip}"]
+                    ])
+                
+                for cmd in ssh_commands:
+                    try:
+                        self._update_progress(f"Trying: {' '.join(cmd)}", "info")
+                        result = subprocess.Popen(cmd)
+                        success = True
+                        break
+                    except Exception as e:
+                        error_msg = str(e)
+                        continue
+            
+            if success:
+                self._update_progress(f"SSH terminal launched for {device_name} ({ip})", "success")
+            else:
+                # If all methods failed, show a dialog with manual instructions
+                manual_cmd = f"ssh {username}@{ip}"
+                self._update_progress(f"Failed to launch SSH automatically. Manual command: {manual_cmd}", "error")
+                
+                msg = QtWidgets.QMessageBox(self)
+                msg.setWindowTitle("SSH Launch Failed")
+                msg.setIcon(QtWidgets.QMessageBox.Warning)
+                msg.setText(f"Could not automatically launch SSH terminal for {device_name} ({ip})")
+                msg.setDetailedText(f"Manual SSH command:\n{manual_cmd}\n\nError: {error_msg}")
+                msg.setStandardButtons(QtWidgets.QMessageBox.Ok)
+                msg.exec_()
+            
+        except Exception as e:
+            self._update_progress(f"Failed to launch SSH terminal: {e}", "error")
+            QtWidgets.QMessageBox.warning(self, "SSH Launch", f"Failed to launch SSH terminal:\n{e}")
+
+    def test_set_inform(self):
+        """Test set-inform functionality on a specific device"""
+        ip, ok = QtWidgets.QInputDialog.getText(self, "Test Set-Inform", f"Enter IP address to test set-inform:\n(Will use active site: {self.site_key})")
+        if not ok or not ip.strip():
+            return
+        
+        self._update_progress(f"Testing set-inform on {ip} using active site: {self.site_key}...", "info")
+        
+        # Test the set-inform command using active site
+        success = self.ctrl.ssh_set_inform(ip, site_key=self.site_key)
+        
+        if success:
+            self._update_progress(f"Set-inform test completed for {ip} in site {self.site_key}. Check the log for details.", "success")
+        else:
+            self._update_progress(f"Set-inform test failed for {ip} in site {self.site_key}. Check the log for details.", "error")
 
     def _locate(self, enabled: bool):
         ips = self._selected_ips()
@@ -432,7 +734,7 @@ class WizardPage(QtWidgets.QWidget):
 
             # 1) set-inform over SSH
             self._update_progress(f"Setting inform URL for {ip}...", "info")
-            _ = self.ctrl.ssh_set_inform(ip)
+            _ = self.ctrl.ssh_set_inform(ip, site_key=self.site_key)
 
             # 2) poll controller for device by IP
             self._update_progress(f"Waiting for {ip} to appear in controller...", "info")

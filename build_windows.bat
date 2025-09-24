@@ -22,6 +22,13 @@ if errorlevel 1 (
     )
 )
 
+REM Create app icon
+echo Creating app icon...
+python setup_icon.py
+if errorlevel 1 (
+    echo WARNING: Icon creation failed, continuing without custom icon...
+)
+
 echo Building executable...
 pyinstaller app.spec
 
@@ -36,5 +43,6 @@ if errorlevel 1 (
 echo.
 echo Build completed successfully!
 echo The executable is in the 'dist' folder
+echo The app will launch without a console window
 echo.
 pause

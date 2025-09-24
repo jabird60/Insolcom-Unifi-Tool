@@ -23,6 +23,12 @@ class MainWindow(QtWidgets.QMainWindow):
         m_file.addSeparator()
         act_quit = m_file.addAction("Quit")
         act_quit.triggered.connect(self.close)
+        
+        # View menu
+        m_view = bar.addMenu("View")
+        act_toggle_log = m_view.addAction("Toggle Log")
+        act_toggle_log.setShortcut("Ctrl+L")
+        act_toggle_log.triggered.connect(self.toggle_log)
 
         # Sites toolbar with searchable combo
         tb = QtWidgets.QToolBar("Sites")
@@ -42,6 +48,18 @@ class MainWindow(QtWidgets.QMainWindow):
         self.btn_sites_reload = QtWidgets.QPushButton("Reload Sites")
         self.btn_sites_reload.clicked.connect(self.load_sites)
         tb.addWidget(self.btn_sites_reload)
+        
+        # Log toggle button
+        self.btn_toggle_log = QtWidgets.QPushButton("Show Log")
+        self.btn_toggle_log.setCheckable(True)
+        self.btn_toggle_log.setChecked(False)
+        self.btn_toggle_log.setToolTip("Toggle log visibility (Ctrl+L)")
+        self.btn_toggle_log.clicked.connect(self.toggle_log)
+        tb.addWidget(self.btn_toggle_log)
+        
+        # Add keyboard shortcut for log toggle
+        self.toggle_log_shortcut = QtWidgets.QShortcut(QtCore.Qt.CTRL + QtCore.Qt.Key_L, self)
+        self.toggle_log_shortcut.activated.connect(self.toggle_log)
 
         # Central tabs
         self.tabs = QtWidgets.QTabWidget()
@@ -57,12 +75,14 @@ class MainWindow(QtWidgets.QMainWindow):
         # Connect tab change signal to trigger auto-discovery
         self.tabs.currentChanged.connect(self._on_tab_changed)
 
-        # Log dock
+        # Log dock (hidden by default)
         self.log_dock = QtWidgets.QDockWidget("Log", self)
         self.log_view = QtWidgets.QTextEdit()
         self.log_view.setReadOnly(True)
+        self.log_view.setMaximumHeight(200)  # Limit height when visible
         self.log_dock.setWidget(self.log_view)
         self.addDockWidget(QtCore.Qt.BottomDockWidgetArea, self.log_dock)
+        self.log_dock.hide()  # Hide by default
         self.log_bus.message.connect(self._append_log)
 
         self.status = self.statusBar()
@@ -70,6 +90,17 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _append_log(self, text: str):
         self.log_view.append(text)
+
+    def toggle_log(self):
+        """Toggle the log dock visibility"""
+        if self.log_dock.isVisible():
+            self.log_dock.hide()
+            self.btn_toggle_log.setText("Show Log")
+            self.btn_toggle_log.setChecked(False)
+        else:
+            self.log_dock.show()
+            self.btn_toggle_log.setText("Hide Log")
+            self.btn_toggle_log.setChecked(True)
 
     # ----- actions -----
     def open_settings(self):
