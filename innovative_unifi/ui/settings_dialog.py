@@ -18,6 +18,11 @@ class SettingsDialog(QtWidgets.QDialog):
         self.ed_ssh_user = QtWidgets.QLineEdit(self.store.get_value("ssh_user","ubnt"))
         self.ed_ssh_pass = QtWidgets.QLineEdit(self.store.get_value("ssh_pass","ubnt"))
         self.ed_ssh_pass.setEchoMode(QtWidgets.QLineEdit.Password)
+        
+        # Site-specific SSH credentials
+        self.ed_site_ssh_user = QtWidgets.QLineEdit(self.store.get_value("site_ssh_user",""))
+        self.ed_site_ssh_pass = QtWidgets.QLineEdit(self.store.get_value("site_ssh_pass",""))
+        self.ed_site_ssh_pass.setEchoMode(QtWidgets.QLineEdit.Password)
 
         form = QtWidgets.QFormLayout()
         form.addRow("Controller URL:", self.ed_url)
@@ -25,9 +30,12 @@ class SettingsDialog(QtWidgets.QDialog):
         form.addRow("Username:", self.ed_user)
         form.addRow("Password:", self.ed_pass)
         form.addRow("", self.cb_verify)
-        form.addRow(QtWidgets.QLabel("<b>SSH defaults for APs</b>"))
+        form.addRow(QtWidgets.QLabel("<b>SSH defaults for unadopted devices</b>"))
         form.addRow("SSH User:", self.ed_ssh_user)
         form.addRow("SSH Pass:", self.ed_ssh_pass)
+        form.addRow(QtWidgets.QLabel("<b>SSH credentials for adopted devices</b>"))
+        form.addRow("Site SSH User:", self.ed_site_ssh_user)
+        form.addRow("Site SSH Pass:", self.ed_site_ssh_pass)
 
         btns = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.Save | QtWidgets.QDialogButtonBox.Cancel)
         btns.accepted.connect(self.accept)
@@ -45,4 +53,6 @@ class SettingsDialog(QtWidgets.QDialog):
         self.store.set_value("verify_ssl", bool(self.cb_verify.isChecked()))
         self.store.set_value("ssh_user", self.ed_ssh_user.text().strip())
         self.store.set_value("ssh_pass", self.ed_ssh_pass.text())
+        self.store.set_value("site_ssh_user", self.ed_site_ssh_user.text().strip())
+        self.store.set_value("site_ssh_pass", self.ed_site_ssh_pass.text())
         super().accept()

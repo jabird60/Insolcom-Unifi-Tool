@@ -152,8 +152,11 @@ class WiFiView(QtWidgets.QWidget):
             return
         try:
             self.ctrl.login()
-            wlan = self.ctrl.create_wlan(self.site_key, name.strip(), psk.strip())
-            QtWidgets.QMessageBox.information(self, "Wi‑Fi", f"Created SSID: {wlan.get('name', name)}")
-            self.refresh()
+            success = self.ctrl.create_wlan(self.site_key, name.strip(), psk.strip())
+            if success:
+                QtWidgets.QMessageBox.information(self, "Wi‑Fi", f"Successfully created SSID: {name}")
+                self.refresh()
+            else:
+                QtWidgets.QMessageBox.warning(self, "Wi‑Fi", "Failed to create WLAN: Unknown error")
         except Exception as e:
             QtWidgets.QMessageBox.warning(self, "Wi‑Fi", f"Controller rejected WLAN create:\n{e}")
